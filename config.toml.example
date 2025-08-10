@@ -1,0 +1,9 @@
+[discourse]
+url_prefix = 'https://forum.example.org/'
+username = 'system'
+key = 'xxxxxxxxx'
+
+[imap]
+host = 'mail.example.org'
+user = 'noreply@example.org'
+password = 'xxxxxxxxx'

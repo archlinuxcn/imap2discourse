@@ -1,0 +1,108 @@
+#!/usr/bin/python3
+
+import tomllib
+import asyncio
+import base64
+import logging
+
+from aioimaplib import aioimaplib
+import httpx
+
+class HandleMail:
+  def __init__(self, http, url_prefix, username, key):
+    self.http = http
+    self.url = f'{url_prefix.rstrip('/')}/admin/email/handle_mail'
+    self.headers = {
+      'Api-Username': username,
+      'Api-Key': key,
+    }
+
+  async def handle(self, msg):
+    data = base64.b64encode(msg).decode('ascii')
+    r = await self.http.post(
+      self.url,
+      data = {'email_encoded': data},
+      headers = self.headers,
+    )
+    if r.status_code == 200:
+      logging.info('mail sent successfully')
+      return True
+    else:
+      logging.error('mail sent with error: %r', r)
+      return False
+
+async def wait_for_new_message(imap, handler):
+  while True:
+    idle = await imap.idle_start(timeout=600)
+    msgs = await imap.wait_server_push()
+    newmails = []
+    for msg in msgs:
+      if msg.endswith(b'EXISTS'):
+        newmails.append(msg.decode().split()[0])
+
+    if newmails:
+      imap.idle_done()
+      await asyncio.wait_for(idle, 1)
+
+    await handle_mail_ids(imap, handler, newmails)
+
+async def handle_mail_ids(imap, handler, mail_ids):
+  has_delete = False
+  for mail_id in mail_ids:
+    result, res = await imap.fetch(mail_id, 'BODY[]')
+    if result == 'OK':
+      mail = res[1]
+      if await handler.handle(mail):
+        has_delete = True
+        await imap.store(mail_id, '+flags', r'\Deleted')
+    else:
+      logging.error('Error fetching mail %s: %r', mail_id, res)
+
+  if has_delete:
+    await imap.expunge()
+
+async def main(config):
+  http = httpx.AsyncClient()
+  d_conf = config['discourse']
+  handler = HandleMail(
+    http,
+    d_conf['url_prefix'],
+    d_conf['username'],
+    d_conf['key'],
+  )
+
+  imap_conf = config['imap']
+  imap = aioimaplib.IMAP4_SSL(host=imap_conf['host'])
+  await imap.wait_hello_from_server()
+  await imap.login(imap_conf['user'], imap_conf['password'])
+  await imap.select('INBOX')
+
+  result, res = await imap.search('OR UNSEEN FLAGGED')
+  mail_ids = res[0].decode().split()
+  await handle_mail_ids(imap, handler, mail_ids)
+
+  await wait_for_new_message(imap, handler)
+
+if __name__ == '__main__':
+  import argparse
+
+  parser = argparse.ArgumentParser(
+    description='Forward mails from IMAP to Discourse'
+  )
+  parser.add_argument('--loglevel', default='info',
+                      choices=['debug', 'info', 'warn', 'error'],
+                      help='log level')
+  parser.add_argument('config_file',
+                      help='config file to use')
+  args = parser.parse_args()
+
+  logger = logging.getLogger()
+  h = logging.StreamHandler()
+  logger.setLevel(args.loglevel.upper())
+  formatter = logging.Formatter('%(levelname)s: %(message)s')
+  h.setFormatter(formatter)
+  logger.addHandler(h)
+
+  with open(args.config_file, 'rb') as f:
+    config = tomllib.load(f)
+  asyncio.run(main(config))
