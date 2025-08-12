@@ -33,18 +33,23 @@ class HandleMail:
 
 async def wait_for_new_message(imap, handler):
   while True:
-    idle = await imap.idle_start(timeout=600)
-    msgs = await imap.wait_server_push()
+    if not imap.has_pending_idle():
+      idle = await imap.idle_start(timeout=3600 * 24)
+
     newmails = []
+    msgs = await imap.wait_server_push(timeout=3600 * 23)
     for msg in msgs:
-      if msg.endswith(b'EXISTS'):
+      logging.debug('idle msg: %s', msg)
+      if msg == b'stop_wait_server_push':
+        imap.idle_done()
+        await asyncio.wait_for(idle, 1)
+      elif msg.endswith(b'EXISTS'):
         newmails.append(msg.decode().split()[0])
 
     if newmails:
       imap.idle_done()
       await asyncio.wait_for(idle, 1)
-
-    await handle_mail_ids(imap, handler, newmails)
+      await handle_mail_ids(imap, handler, newmails)
 
 async def handle_mail_ids(imap, handler, mail_ids):
   has_delete = False
