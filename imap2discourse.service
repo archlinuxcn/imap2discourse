@@ -1,0 +1,35 @@
+[Unit]
+Description=Forward mails from IMAP to Discourse
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/imap2discourse ${CREDENTIALS_DIRECTORY}/config.toml
+LoadCredential=config.toml:/etc/imap2discourse/config.toml
+
+DynamicUser=true
+RestrictNamespaces=true
+PrivateDevices=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ProtectProc=noaccess
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RemoveIPC=true
+TasksMax=10
+UMask=0006
+ProtectHostname=true
+SystemCallFilter=~@clock @debug @module @mount @raw-io @reboot @swap @privileged @resources @cpu-emulation @obsolete
+
+[Install]
+WantedBy=multi-user.target
