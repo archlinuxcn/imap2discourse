@@ -37,7 +37,11 @@ async def wait_for_new_message(imap, handler):
       idle = await imap.idle_start(timeout=3600 * 24)
 
     newmails = []
-    msgs = await imap.wait_server_push(timeout=3600 * 23)
+    try:
+      msgs = await imap.wait_server_push(timeout=3600 * 23)
+    except TimeoutError:
+      continue
+
     for msg in msgs:
       logging.debug('idle msg: %s', msg)
       if msg == b'stop_wait_server_push':
